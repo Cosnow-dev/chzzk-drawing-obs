@@ -1,3 +1,5 @@
+<img width="817" height="461" alt="image" src="https://github.com/user-attachments/assets/dd74ab9a-a329-4cec-a8d9-48a9eb6d9b07" />
+
 치지직 드로잉 (스트리머 화면에 그리기)
 
 * 참고: 시청자는 [치지직 드로잉 확장 프로그램](https://github.com/Cosnow-dev/chzzk-drawing-chrome-extension)을 사용해서 방송 송출 화면에 그림을 그릴 수 있습니다.
