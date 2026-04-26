@@ -1,0 +1,138 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <title>OBS 그림 수신기 (점선 완벽 해결)</title>
+    <style>
+        body { margin: 0; overflow: hidden; background: transparent; }
+        canvas { display: block; width: 1920px; height: 1080px; }
+        
+        #debug-log {
+            position: absolute;
+            top: 20px;
+            left: 20px;
+            color: white;
+            font-size: 28px;
+            font-weight: bold;
+            font-family: sans-serif;
+            text-shadow: 2px 2px 4px black;
+            z-index: 9999;
+        }
+    </style>
+</head>
+<body>
+    <div id="debug-log">🟡 서버 연결 시도 중...</div>
+    <div id="canvas-container" style="position: relative; width: 1920px; height: 1080px;"></div>
+
+    <script>
+		// ★★★ 여기에 본인의 치지직 채널 고유 ID를 적어주세요! ★★★
+        // 예: 주소가 https://chzzk.naver.com/live/12345abcd 이면 '12345abcd' 입력
+		// 플레이스홀더: '여기에_본인_아이디를_넣으세요'
+        const MY_CHANNEL_ID = 'cfae28dfd815af31dc046d121dda369d';
+
+        const canvasContainer = document.getElementById('canvas-container');
+        const debugLog = document.getElementById('debug-log');
+
+        const viewerContexts = {};
+
+        function getViewerContext(viewerId) {
+            const vid = viewerId || 'default';
+            if (!viewerContexts[vid]) {
+                const c = document.createElement('canvas');
+                c.width = 1920;
+                c.height = 1080;
+                c.style.position = 'absolute';
+                c.style.top = '0';
+                c.style.left = '0';
+                canvasContainer.appendChild(c);
+                
+                const ctx = c.getContext('2d');
+                ctx.lineCap = 'round';
+                ctx.lineJoin = 'round';
+                viewerContexts[vid] = { canvas: c, ctx: ctx };
+            }
+            return viewerContexts[vid];
+        }
+
+        let messageCount = 0;
+        let pendingPoints = []; 
+        const BUFFER_DELAY = 50; 
+
+        function drawPointsSmoothly() {
+            const now = Date.now();
+            
+            while (pendingPoints.length > 0) {
+                const pt = pendingPoints[0];
+                const dataAge = now - pt.receivedAt;
+
+                if (dataAge >= BUFFER_DELAY) {
+                    const data = pendingPoints.shift();
+
+                    if (data.type === 'clear-all') {
+                        const vc = viewerContexts[data.viewerId || 'default'];
+                        if (vc) vc.ctx.clearRect(0, 0, vc.canvas.width, vc.canvas.height);
+                        continue;
+                    }
+
+                    const vc = getViewerContext(data.viewerId);
+                    const ctx = vc.ctx;
+
+                    if (data.type === 'erase-stroke') {
+                        ctx.globalCompositeOperation = 'destination-out';
+                        ctx.lineWidth = data.size;
+                    } else {
+                        ctx.globalCompositeOperation = 'source-over';
+                        ctx.lineWidth = data.size || 15;
+                        ctx.strokeStyle = data.color || '#00FF00';
+                    }
+
+                    // ★ 점선 문제 해결 핵심 로직: 시작점, 제어점, 끝점을 모두 사용하여 한 번에 그림
+                    ctx.beginPath();
+                    ctx.moveTo(data.startX, data.startY); // 여기서부터!
+                    ctx.quadraticCurveTo(data.controlX, data.controlY, data.endX, data.endY);
+                    ctx.stroke();
+                } else {
+                    break; 
+                }
+            }
+            requestAnimationFrame(drawPointsSmoothly);
+        }
+        
+        drawPointsSmoothly(); 
+
+        function connect() {
+            // ★ 연결 주소 끝에 본인의 채널 ID를 붙여서 특정 방으로 입장합니다!
+            const socket = new WebSocket(`wss://chzzk-drawing.onrender.com/${MY_CHANNEL_ID}`);
+
+            socket.onopen = () => {
+                debugLog.innerHTML = `🟢 [${MY_CHANNEL_ID}] 방 연결 성공!`;
+                debugLog.style.color = "#00FF00";
+            };
+
+            socket.onmessage = (event) => {
+                const data = JSON.parse(event.data);
+                messageCount++;
+                data.receivedAt = Date.now(); 
+                pendingPoints.push(data);     
+
+                debugLog.innerHTML = `🔵 데이터 수신 중! (받은 신호: ${messageCount}개)`;
+                debugLog.style.color = "#00FFFF";
+            };
+
+            socket.onerror = () => {
+                debugLog.innerHTML = "🔴 웹소켓 에러 발생!";
+                debugLog.style.color = "red";
+            };
+
+            socket.onclose = () => {
+                debugLog.innerHTML = "🔴 서버 연결 끊김. 재연결 시도...";
+                debugLog.style.color = "orange";
+                pendingPoints = []; 
+                setTimeout(connect, 2000);
+            };
+        }
+
+        connect();
+    </script>
+</body>
+</html>
